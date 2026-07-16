@@ -2,6 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install libc6-compat to fix SWC Turbopack native bindings on Alpine Linux
+RUN apk add --no-cache libc6-compat
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
