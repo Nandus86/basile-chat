@@ -7,13 +7,13 @@ import ChatWindow from "@/components/chat-window";
 
 export default function ChatPage() {
   const router = useRouter();
-  const { user } = useChat();
+  const { conta, carregando } = useChat();
 
   useEffect(() => {
-    if (!user) router.replace("/");
-  }, [user, router]);
+    if (!carregando && !conta) router.replace("/");
+  }, [carregando, conta, router]);
 
-  if (!user) return null;
+  if (!conta) return null;
 
   return <ChatWindow />;
 }

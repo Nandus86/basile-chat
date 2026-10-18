@@ -1,109 +1,54 @@
-# BasileIA Messenger
+# Basile — app de conversa com a igreja (PWA)
 
-Aplicação web de chat que conecta usuários à IA **Basile** via WebSocket em tempo real.
+App web instalável (PWA) para quem não tem ou não quer usar o WhatsApp conversar com a igreja.
+Do outro lado está o mesmo Basile do WhatsApp: mesmos agentes, mesma memória (a sessão é a mesma).
 
 ## Arquitetura
 
 ```
-[Next.js Frontend] ──WebSocket──▶ [FastAPI Backend] ──HTTP POST──▶ [Basile Webhook]
-                                          ▲                               │
-                                   [SQLite DB]                          │
-                                  (users table)                         │
-                                          ▲                              │
-                              POST /webhook/receive ◀───────────────────┘
-                              {phone, message}
+[App PWA (este repo)] ──HTTP + WebSocket──▶ [mensageiro (basile_ia/backend/mensageiro)] ──▶ Basile (orquestrador)
+                                                    ▲                                          │
+                                                    └──────── retorno assinado (callback) ◀────┘
 ```
 
-### Fluxo
-1. **Usuário envia mensagem**: Frontend → WS → Backend → POST para o webhook do Basile (`{phone, message}`)
-2. **Basile responde**: Basile → POST no webhook reverso do Backend (`{phone, message}`) → Backend localiza a conexão WS pelo telefone → entrega ao usuário
+- **Entrar**: nome completo + CPF do cadastro da igreja (provisório, até termos convite/código).
+  Se a pessoa estiver em mais de uma igreja, ela escolhe.
+- **Conversa**: o token vai na primeira mensagem do WebSocket (nunca na URL). Tudo fica guardado:
+  ao abrir o app, aparece o histórico.
+- **PWA**: `public/manifest.webmanifest`, ícones e `public/sw.js` (abre rápido e sem internet).
+  O service worker só é registrado no build de produção.
 
-## Rodando com Docker (localhost)
+O backend antigo (pasta `backend/`, sem login) não é mais usado.
 
-Pré-requisito: Docker + Docker Compose instalados.
+## Rodando localmente
 
-```bash
-docker compose up --build
-```
+Precisa do mensageiro rodando (no basile_ia: `docker compose up -d basile-mensageiro`, porta 8014).
 
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000
-- Docs da API: http://localhost:8000/docs
-
-## Desenvolvimento local (sem Docker)
-
-### Backend (FastAPI)
-```bash
-cd backend
-pip install -r requirements.txt
-python main.py
-```
-
-### Frontend (Next.js)
 ```bash
 cd frontend
 npm install
-npm run dev
+NEXT_PUBLIC_API_BASE=http://localhost:8014 NEXT_PUBLIC_WS_BASE=ws://localhost:8014 npm run build
+npx next start -p 3010
 ```
 
-## Endpoints do Backend
+Abra http://localhost:3010 (a origem precisa estar em `MENSAGEIRO_ORIGENS`).
 
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/api/users/register` | Cadastra usuário `{name, phone}` |
-| `GET` | `/api/users/{phone}` | Busca usuário por telefone |
-| `WS` | `/ws/{phone}` | Conexão WebSocket para mensagens em tempo real |
-| `POST` | `/webhook/receive` | Webhook reverso para respostas do Basile `{phone, message}` |
+## Variáveis (no build)
 
-## Configuração
-
-| Variável | Default | Descrição |
-|----------|---------|-----------|
-| `BASILE_WEBHOOK_URL` | URL de produção do Basile | Endpoint para onde o backend envia as mensagens |
-| `DB_PATH` | `data/basile.db` | Caminho do banco SQLite |
-| `NEXT_PUBLIC_API_BASE` | `http://localhost:8000` | URL do backend (frontend) |
-| `NEXT_PUBLIC_WS_BASE` | `ws://localhost:8000` | URL do WebSocket (frontend) |
-
-## Testando o webhook reverso
-
-Com o backend rodando e um cliente WS conectado ao `/ws/{phone}`, simule uma resposta do Basile:
-
-```bash
-curl -X POST http://localhost:8000/webhook/receive \
-  -H "Content-Type: application/json" \
-  -d "{\"phone\":\"5511999999999\",\"message\":\"Olá! Sou a Basile.\"}"
-```
-
-A mensagem deve aparecer instantaneamente no chat do usuário conectado.
+| Variável | Exemplo | Para quê |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE` | `https://app-api.basileia.global` | endereço do mensageiro |
+| `NEXT_PUBLIC_WS_BASE` | `wss://app-api.basileia.global` | WebSocket do mensageiro |
 
 ## Estrutura
 
 ```
-basile-chat/
-├── docker-compose.yml
-├── backend/
-│   ├── Dockerfile
-│   ├── main.py              # FastAPI app
-│   ├── database.py           # SQLite (users)
-│   ├── connection_manager.py # Registro de conexões WS
-│   └── requirements.txt
-└── frontend/
-    ├── Dockerfile
-    └── src/
-        ├── app/
-        │   ├── layout.tsx        # Layout raiz + ChatProvider
-        │   ├── page.tsx          # Tela de login
-        │   └── chat/page.tsx     # Tela do chat
-        ├── contexts/
-        │   └── chat-context.tsx  # Estado + WS + mensagens
-        ├── components/
-        │   ├── login-form.tsx
-        │   ├── chat-window.tsx
-        │   ├── chat-bubble.tsx
-        │   └── message-input.tsx
-        ├── lib/
-        │   ├── ws-client.ts      # Cliente WebSocket com reconexão
-        │   └── api.ts            # Cliente REST
-        └── types/
-            └── index.ts
+frontend/
+├── public/                    # manifesto, ícones, service worker
+└── src/
+    ├── app/                   # login (/) e conversa (/chat)
+    ├── contexts/chat-context.tsx   # sessão, histórico, tempo real
+    ├── components/            # login, janela, balões, campo de mensagem, registro do SW
+    ├── lib/                   # cliente REST e WebSocket
+    └── types/
 ```

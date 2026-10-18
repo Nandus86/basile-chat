@@ -25,7 +25,7 @@ function TypingIndicator() {
 }
 
 export default function ChatWindow() {
-  const { user, messages, isBasileTyping, isConnected, sendMessage, logout } = useChat();
+  const { conta, messages, isBasileTyping, isConnected, sendMessage, logout } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,21 +33,25 @@ export default function ChatWindow() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, isBasileTyping]);
 
-  const initial = user?.name?.charAt(0).toUpperCase() ?? "?";
+  const initial = conta?.igreja_nome?.charAt(0).toUpperCase() ?? "?";
+  // a mensagem provisória ("só um instante…") some quando chega a resposta de verdade
+  const visiveis = messages.filter(
+    (m, i) => !m.provisional || !messages.slice(i + 1).some((n) => n.sender === "basile")
+  );
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-[100dvh] flex-col">
       <header className="glass-surface z-20 flex items-center gap-3 border-b border-basile-glass-border px-4 py-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-basile-500 to-basile-700 text-sm font-semibold text-white shadow-md shadow-basile-700/30">
           {initial}
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-basile-50">{user?.name}</h2>
+            <h2 className="text-sm font-semibold text-basile-50">{conta?.igreja_nome}</h2>
             <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-400" : "bg-red-400"} shadow-sm`} />
           </div>
           <p className="text-xs text-basile-200/40">
-            {isConnected ? "Conectado" : "Reconectando..."} · +55{user?.phone}
+            {isConnected ? "Conectado" : "Reconectando..."} · {conta?.nome}
           </p>
         </div>
         <button
@@ -63,7 +67,7 @@ export default function ChatWindow() {
 
       <div ref={scrollRef} className="scrollbar-thin flex-1 overflow-y-auto px-4 py-5">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
-          {messages.length === 0 && !isBasileTyping && (
+          {visiveis.length === 0 && !isBasileTyping && (
             <div className="mt-10 flex flex-col items-center text-center">
               <div className="animate-pulse-glow mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-basile-500 to-basile-700 shadow-lg shadow-basile-700/40">
                 <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7 text-white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -72,12 +76,12 @@ export default function ChatWindow() {
                   <path d="M12 7v4M8 16h.01M16 16h.01" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-basile-100/80">Basile está pronta</p>
-              <p className="mt-1 text-xs text-basile-200/40">Envie uma mensagem para começar</p>
+              <p className="text-sm font-medium text-basile-100/80">Olá! Como podemos ajudar?</p>
+              <p className="mt-1 text-xs text-basile-200/40">Pergunte sobre cultos, células, pedidos de oração e mais</p>
             </div>
           )}
 
-          {messages.map((m) => (
+          {visiveis.map((m) => (
             <ChatBubble key={m.id} message={m} />
           ))}
 

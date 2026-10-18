@@ -9,135 +9,185 @@ import {
   useRef,
   useState,
 } from "react";
-import { buildWsUrl, registerUser } from "@/lib/api";
+import { NaoAutorizado, entrar, historico, wsUrl } from "@/lib/api";
 import { WsClient } from "@/lib/ws-client";
-import type { Message, Sender, User, WsIncoming } from "@/types";
+import type { Conta, IgrejaParaEscolher, Message, MensagemServidor, Sender, WsIncoming } from "@/types";
 
 interface ChatContextValue {
-  user: User | null;
+  conta: Conta | null;
+  carregando: boolean;
   messages: Message[];
   isConnected: boolean;
   isBasileTyping: boolean;
-  login: (name: string, phone: string, api_key: string, instance_id: string) => Promise<void>;
+  /** Devolve as igrejas para escolher quando a pessoa está em mais de uma. */
+  login: (nome: string, cpf: string, igrejaId?: string) => Promise<IgrejaParaEscolher[] | null>;
   sendMessage: (content: string) => void;
   logout: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
-const STORAGE_KEY = "basile_user";
+const STORAGE_KEY = "basile_sessao";
+const ESPERA_RESPOSTA_MS = 90000;
+
+interface SessaoSalva {
+  token: string;
+  conta: Conta;
+}
 
 function uid(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function paraTela(m: MensagemServidor): Message {
+  return {
+    id: `s-${m.id}`,
+    serverId: m.id,
+    content: m.texto,
+    sender: m.autor === "pessoa" ? "user" : "basile",
+    timestamp: new Date(m.em).getTime(),
+    provisional: m.provisoria,
+  };
+}
+
+/** Junta uma mensagem do servidor na lista: sem repetir, trocando a "enviando…" pela confirmada. */
+function juntar(lista: Message[], nova: Message): Message[] {
+  if (lista.some((m) => m.serverId === nova.serverId)) return lista;
+  let base = lista;
+  if (nova.sender === "user") {
+    const i = lista.findIndex((m) => m.pending && m.content === nova.content);
+    if (i >= 0) base = [...lista.slice(0, i), ...lista.slice(i + 1)];
+  }
+  return [...base, nova].sort((a, b) => a.timestamp - b.timestamp);
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [sessao, setSessao] = useState<SessaoSalva | null>(null);
+  const [carregando, setCarregando] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isBasileTyping, setIsBasileTyping] = useState(false);
   const wsRef = useRef<WsClient | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleWsMessage = useCallback((data: WsIncoming) => {
-    if (data.type === "message" && data.sender === "basile" && data.content) {
-      setIsBasileTyping(false);
-      if (typingTimer.current) clearTimeout(typingTimer.current);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          content: data.content as string,
-          sender: "basile",
-          timestamp: Date.now(),
-        },
-      ]);
-    }
+  const pararDeDigitar = useCallback(() => {
+    setIsBasileTyping(false);
+    if (typingTimer.current) clearTimeout(typingTimer.current);
   }, []);
 
-  const connectWs = useCallback(
-    (phone: string) => {
-      const client = new WsClient(buildWsUrl(phone));
+  const logout = useCallback(() => {
+    wsRef.current?.disconnect();
+    wsRef.current = null;
+    setSessao(null);
+    setMessages([]);
+    setIsConnected(false);
+    pararDeDigitar();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* navegador sem armazenamento */
+    }
+  }, [pararDeDigitar]);
+
+  const handleWsMessage = useCallback(
+    (data: WsIncoming) => {
+      if (data.tipo !== "mensagem") return;
+      const nova = paraTela(data.mensagem);
+      if (nova.sender === "basile" && !nova.provisional) pararDeDigitar();
+      setMessages((prev) => juntar(prev, nova));
+    },
+    [pararDeDigitar]
+  );
+
+  const abrir = useCallback(
+    async (s: SessaoSalva) => {
+      wsRef.current?.disconnect();
+      setSessao(s);
+      try {
+        const lista = await historico(s.token);
+        setMessages(lista.map(paraTela));
+      } catch (erro) {
+        if (erro instanceof NaoAutorizado) {
+          logout();
+          return;
+        }
+      }
+      const client = new WsClient(wsUrl(), s.token, logout);
       client.onMessage(handleWsMessage);
       client.onStatus(setIsConnected);
       client.connect();
       wsRef.current = client;
     },
-    [handleWsMessage]
+    [handleWsMessage, logout]
   );
 
   const login = useCallback(
-    async (name: string, phone: string, api_key: string, instance_id: string) => {
-      const reg = await registerUser(name, phone, api_key, instance_id);
-      setUser(reg);
-      setMessages([]);
-      setIsBasileTyping(false);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(reg));
+    async (nome: string, cpf: string, igrejaId?: string) => {
+      const r = await entrar(nome, cpf, igrejaId);
+      if ("escolher" in r) return r.escolher;
+      const s = { token: r.token, conta: r.conta };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      } catch {
+        /* navegador sem armazenamento: vale só nesta aba */
       }
-      connectWs(reg.phone);
+      await abrir(s);
+      return null;
     },
-    [connectWs]
+    [abrir]
   );
 
   const sendMessage = useCallback(
     (content: string) => {
       const text = content.trim();
-      if (!text || !wsRef.current || !user) return;
-
+      if (!text || !wsRef.current) return;
+      if (!wsRef.current.send({ tipo: "mensagem", texto: text })) return;
       setMessages((prev) => [
         ...prev,
-        { id: uid(), content: text, sender: "user", timestamp: Date.now() },
+        { id: uid(), content: text, sender: "user" as Sender, timestamp: Date.now(), pending: true },
       ]);
-
-      wsRef.current.send({
-        type: "message",
-        content: text,
-        api_key: user.api_key,
-        instance_id: user.instance_id,
-      });
-
       setIsBasileTyping(true);
       if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => {
-        setIsBasileTyping(false);
-      }, 30000);
+      typingTimer.current = setTimeout(() => setIsBasileTyping(false), ESPERA_RESPOSTA_MS);
     },
-    [user]
+    []
   );
 
-  const logout = useCallback(() => {
-    wsRef.current?.disconnect();
-    wsRef.current = null;
-    setUser(null);
-    setMessages([]);
-    setIsConnected(false);
-    setIsBasileTyping(false);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+  // volta a conectar quando o app volta para a tela (celular bloqueado, troca de aba)
+  useEffect(() => {
+    const acordar = () => {
+      if (document.visibilityState === "visible") wsRef.current?.wake();
+    };
+    document.addEventListener("visibilitychange", acordar);
+    window.addEventListener("online", acordar);
+    return () => {
+      document.removeEventListener("visibilitychange", acordar);
+      window.removeEventListener("online", acordar);
+    };
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    let salva: SessaoSalva | null = null;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const stored: User = JSON.parse(raw);
-        setUser(stored);
-        connectWs(stored.phone);
-      }
+      salva = raw ? (JSON.parse(raw) as SessaoSalva) : null;
     } catch {
-      /* ignore */
+      salva = null;
+    }
+    if (salva?.token && salva.conta) {
+      abrir(salva).finally(() => setCarregando(false));
+    } else {
+      setCarregando(false);
     }
     return () => {
       wsRef.current?.disconnect();
     };
-  }, [connectWs]);
+  }, [abrir]);
 
   const value = useMemo<ChatContextValue>(
     () => ({
-      user,
+      conta: sessao?.conta ?? null,
+      carregando,
       messages,
       isConnected,
       isBasileTyping,
@@ -145,7 +195,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       sendMessage,
       logout,
     }),
-    [user, messages, isConnected, isBasileTyping, login, sendMessage, logout]
+    [sessao, carregando, messages, isConnected, isBasileTyping, login, sendMessage, logout]
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

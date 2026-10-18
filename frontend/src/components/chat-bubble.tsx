@@ -32,10 +32,10 @@ export default function ChatBubble({ message }: { message: Message }) {
               : "rounded-bl-md glass-surface text-basile-50"
           }`}
         >
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          <p className={`whitespace-pre-wrap break-words ${message.provisional ? "italic opacity-70" : ""}`}>{message.content}</p>
         </div>
         <span className="mt-1 px-1 text-[10px] text-basile-200/30">
-          {formatTime(message.timestamp)}
+          {message.pending ? "enviando…" : formatTime(message.timestamp)}
         </span>
       </div>
     </div>

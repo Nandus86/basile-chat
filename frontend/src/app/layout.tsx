@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ChatProvider } from "@/contexts/chat-context";
+import RegistrarSW from "@/components/registrar-sw";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +15,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BasileIA Messenger",
-  description: "Converse com a IA Basile em tempo real",
+  title: "Basile",
+  description: "Converse com a sua igreja sem precisar do WhatsApp",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Basile", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#3b0764",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -30,6 +41,7 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         <ChatProvider>{children}</ChatProvider>
+        <RegistrarSW />
       </body>
     </html>
   );
