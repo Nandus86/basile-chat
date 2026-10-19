@@ -1,4 +1,19 @@
-import type { Message } from "@/types";
+import type { Anexo, Message, Opcao } from "@/types";
+
+function Attachment({ anexo }: { anexo: Anexo }) {
+  if (anexo.tipo === "imagem") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={anexo.url} alt={anexo.nome || "imagem"} className="mb-2 max-h-80 w-full rounded-xl object-contain" />;
+  }
+  if (anexo.tipo === "audio") return <audio controls src={anexo.url} className="mb-2 w-60 max-w-full" />;
+  if (anexo.tipo === "video") return <video controls src={anexo.url} className="mb-2 max-h-80 w-full rounded-xl" />;
+  return (
+    <a href={anexo.url} download={anexo.nome || "documento"} target="_blank" rel="noreferrer"
+       className="mb-2 block rounded-lg bg-basile-950/40 px-3 py-2 text-xs underline">
+      📄 {anexo.nome || "Abrir documento"}
+    </a>
+  );
+}
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("pt-BR", {
@@ -7,7 +22,13 @@ function formatTime(ts: number): string {
   });
 }
 
-export default function ChatBubble({ message }: { message: Message }) {
+export default function ChatBubble({
+  message,
+  onChoose,
+}: {
+  message: Message;
+  onChoose?: (opcao: Opcao) => void;   // só na última mensagem: as opções ficam tocáveis
+}) {
   const isUser = message.sender === "user";
 
   return (
@@ -32,8 +53,29 @@ export default function ChatBubble({ message }: { message: Message }) {
               : "rounded-bl-md glass-surface text-basile-50"
           }`}
         >
-          <p className={`whitespace-pre-wrap break-words ${message.provisional ? "italic opacity-70" : ""}`}>{message.content}</p>
+          {message.attachment && <Attachment anexo={message.attachment} />}
+          {message.content && (
+            <p className={`whitespace-pre-wrap break-words ${message.provisional ? "italic opacity-70" : ""}`}>{message.content}</p>
+          )}
         </div>
+        {!!message.options?.length && (
+          <div className="mt-2 flex w-full flex-col gap-1.5">
+            {message.options.map((o, i) => (
+              <div key={`${o.id ?? o.titulo}-${i}`}>
+                {o.secao && (i === 0 || message.options?.[i - 1]?.secao !== o.secao) && (
+                  <p className="mb-1 mt-1 px-1 text-[10px] uppercase tracking-wide text-basile-200/40">{o.secao}</p>
+                )}
+                <button
+                  disabled={!onChoose}
+                  onClick={() => onChoose?.(o)}
+                  className="w-full rounded-xl border border-basile-500/40 bg-basile-950/40 px-3 py-2 text-left text-sm text-basile-100 transition hover:border-basile-400 hover:bg-basile-500/10 disabled:cursor-default disabled:opacity-50"
+                >
+                  {o.titulo}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <span className="mt-1 px-1 text-[10px] text-basile-200/30">
           {message.pending ? "enviando…" : formatTime(message.timestamp)}
         </span>

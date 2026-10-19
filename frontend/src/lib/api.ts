@@ -18,12 +18,12 @@ async function detalhe(res: Response, padrao: string): Promise<string> {
   }
 }
 
-/** Entra com o nome completo e o CPF do cadastro da igreja. */
-export async function entrar(nome: string, cpf: string, igrejaId?: string): Promise<ResultadoEntrada> {
+/** Entra com usuário e senha (por enquanto, os dois são o CPF do cadastro da igreja). */
+export async function entrar(usuario: string, senha: string, igrejaId?: string): Promise<ResultadoEntrada> {
   const res = await fetch(`${API_BASE}/entrar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nome, cpf, igreja_id: igrejaId }),
+    body: JSON.stringify({ usuario, senha, igreja_id: igrejaId }),
   });
   if (!res.ok) throw new Error(await detalhe(res, "Não foi possível entrar agora."));
   return res.json();

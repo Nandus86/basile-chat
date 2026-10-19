@@ -23,8 +23,8 @@ const rotulo = "mb-1.5 block text-xs font-medium uppercase tracking-wide text-ba
 export default function LoginForm() {
   const router = useRouter();
   const { conta, carregando, login } = useChat();
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
   const [igrejas, setIgrejas] = useState<IgrejaParaEscolher[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +37,7 @@ export default function LoginForm() {
     setError("");
     setLoading(true);
     try {
-      const escolher = await login(nome.trim(), digitsOnly(cpf), igrejaId);
+      const escolher = await login(digitsOnly(usuario), digitsOnly(senha), igrejaId);
       if (escolher) {
         setIgrejas(escolher);
         return;
@@ -53,12 +53,12 @@ export default function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (nome.trim().split(/\s+/).length < 2) {
-      setError("Digite o seu nome completo, como está no cadastro da igreja.");
+    if (digitsOnly(usuario).length !== 11) {
+      setError("O usuário é o seu CPF (11 números).");
       return;
     }
-    if (digitsOnly(cpf).length !== 11) {
-      setError("O CPF tem 11 números.");
+    if (!senha) {
+      setError("Digite a sua senha.");
       return;
     }
     await tentar();
@@ -105,26 +105,26 @@ export default function LoginForm() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className={rotulo}>Nome completo</label>
+              <label className={rotulo}>Usuário</label>
               <input
                 type="text"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Como está no cadastro da igreja"
-                autoComplete="name"
+                value={usuario}
+                onChange={(e) => setUsuario(mascaraCpf(e.target.value))}
+                placeholder="Seu CPF"
+                autoComplete="username"
+                inputMode="numeric"
                 className={campo}
               />
             </div>
 
             <div>
-              <label className={rotulo}>CPF</label>
+              <label className={rotulo}>Senha</label>
               <input
                 type="password"
-                value={cpf}
-                onChange={(e) => setCpf(mascaraCpf(e.target.value))}
-                placeholder="000.000.000-00"
-                autoComplete="off"
-                inputMode="numeric"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                placeholder="Por enquanto, também o seu CPF"
+                autoComplete="current-password"
                 className={campo}
               />
             </div>

@@ -11,7 +11,8 @@ Do outro lado está o mesmo Basile do WhatsApp: mesmos agentes, mesma memória (
                                                     └──────── retorno assinado (callback) ◀────┘
 ```
 
-- **Entrar**: nome completo + CPF do cadastro da igreja (provisório, até termos convite/código).
+- **Entrar**: usuário e senha são o CPF do cadastro da igreja (PROVISÓRIO, até combinar uma senha de verdade
+  com o CRM).
   Se a pessoa estiver em mais de uma igreja, ela escolhe.
 - **Conversa**: o token vai na primeira mensagem do WebSocket (nunca na URL). Tudo fica guardado:
   ao abrir o app, aparece o histórico.

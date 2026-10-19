@@ -81,15 +81,21 @@ export default function ChatWindow() {
             </div>
           )}
 
-          {visiveis.map((m) => (
-            <ChatBubble key={m.id} message={m} />
+          {visiveis.map((m, i) => (
+            <ChatBubble
+              key={m.id}
+              message={m}
+              onChoose={
+                i === visiveis.length - 1 && isConnected ? (o) => sendMessage(o.titulo, o.id) : undefined
+              }
+            />
           ))}
 
           {isBasileTyping && <TypingIndicator />}
         </div>
       </div>
 
-      <MessageInput onSend={sendMessage} disabled={!isConnected} />
+      <MessageInput onSend={(texto) => sendMessage(texto)} disabled={!isConnected} />
     </div>
   );
 }

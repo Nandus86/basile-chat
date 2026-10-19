@@ -20,8 +20,8 @@ interface ChatContextValue {
   isConnected: boolean;
   isBasileTyping: boolean;
   /** Devolve as igrejas para escolher quando a pessoa está em mais de uma. */
-  login: (nome: string, cpf: string, igrejaId?: string) => Promise<IgrejaParaEscolher[] | null>;
-  sendMessage: (content: string) => void;
+  login: (usuario: string, senha: string, igrejaId?: string) => Promise<IgrejaParaEscolher[] | null>;
+  sendMessage: (content: string, optionId?: string | null) => void;
   logout: () => void;
 }
 
@@ -47,6 +47,8 @@ function paraTela(m: MensagemServidor): Message {
     sender: m.autor === "pessoa" ? "user" : "basile",
     timestamp: new Date(m.em).getTime(),
     provisional: m.provisoria,
+    options: m.opcoes ?? [],
+    attachment: m.anexo ?? null,
   };
 }
 
@@ -122,8 +124,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
   const login = useCallback(
-    async (nome: string, cpf: string, igrejaId?: string) => {
-      const r = await entrar(nome, cpf, igrejaId);
+    async (usuario: string, senha: string, igrejaId?: string) => {
+      const r = await entrar(usuario, senha, igrejaId);
       if ("escolher" in r) return r.escolher;
       const s = { token: r.token, conta: r.conta };
       try {
@@ -138,10 +140,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, optionId?: string | null) => {
       const text = content.trim();
       if (!text || !wsRef.current) return;
-      if (!wsRef.current.send({ tipo: "mensagem", texto: text })) return;
+      if (!wsRef.current.send({ tipo: "mensagem", texto: text, opcao_id: optionId ?? undefined })) return;
       setMessages((prev) => [
         ...prev,
         { id: uid(), content: text, sender: "user" as Sender, timestamp: Date.now(), pending: true },

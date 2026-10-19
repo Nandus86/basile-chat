@@ -13,6 +13,19 @@ export interface IgrejaParaEscolher {
   igreja_nome: string;
 }
 
+/** Opção de enquete, lista ou botão (o id é o que o WhatsApp devolveria ao escolher). */
+export interface Opcao {
+  titulo: string;
+  id?: string | null;
+  secao?: string | null;
+}
+
+export interface Anexo {
+  tipo: "imagem" | "audio" | "video" | "documento";
+  url: string;
+  nome?: string | null;
+}
+
 /** Mensagem como o mensageiro guarda e entrega. */
 export interface MensagemServidor {
   id: number;
@@ -21,6 +34,8 @@ export interface MensagemServidor {
   texto: string;
   em: string;
   provisoria: boolean;
+  opcoes?: Opcao[];
+  anexo?: Anexo | null;
 }
 
 /** Mensagem como a tela mostra. */
@@ -32,6 +47,8 @@ export interface Message {
   timestamp: number;
   provisional?: boolean;   // "só um instante…" enquanto o Basile pensa
   pending?: boolean;       // enviada, esperando o servidor confirmar
+  options?: Opcao[];       // enquete/lista/botões: a pessoa toca para responder
+  attachment?: Anexo | null;
 }
 
 export type WsIncoming =
