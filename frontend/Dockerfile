@@ -13,6 +13,12 @@ ARG NEXT_PUBLIC_WS_BASE
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 ENV NEXT_PUBLIC_WS_BASE=$NEXT_PUBLIC_WS_BASE
 
+# Os endereços do mensageiro ficam gravados no app durante o build: sem eles o login não funciona
+RUN case "$NEXT_PUBLIC_API_BASE" in http://?*|https://?*) ;; \
+      *) echo "ERRO: NEXT_PUBLIC_API_BASE precisa ser o endereço do mensageiro (ex.: https://...easypanel.host). Veio: '$NEXT_PUBLIC_API_BASE'"; exit 1;; esac && \
+    case "$NEXT_PUBLIC_WS_BASE" in ws://?*|wss://?*) ;; \
+      *) echo "ERRO: NEXT_PUBLIC_WS_BASE precisa ser o endereço do mensageiro com wss:// (ex.: wss://...easypanel.host). Veio: '$NEXT_PUBLIC_WS_BASE'"; exit 1;; esac
+
 COPY . .
 RUN npm run build
 
