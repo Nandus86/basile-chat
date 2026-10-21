@@ -5,9 +5,14 @@ const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE || "ws://localhost:8014";
 
 export class NaoAutorizado extends Error {}
 
-export type ResultadoEntrada =
-  | { token: string; conta: Conta }
-  | { escolher: IgrejaParaEscolher[] };
+export type CodigoEnviado = {
+  desafio: string;
+  enviado_por: "sms" | "whatsapp";
+  destino: string; // celular do cadastro, mascarado: (43) •••••-4670
+  reenviar_em_segundos: number;
+};
+
+export type PedidoDeCodigo = CodigoEnviado | { escolher: IgrejaParaEscolher[] };
 
 async function detalhe(res: Response, padrao: string): Promise<string> {
   try {
@@ -18,15 +23,29 @@ async function detalhe(res: Response, padrao: string): Promise<string> {
   }
 }
 
-/** Entra com usuário e senha (por enquanto, os dois são o CPF do cadastro da igreja). */
-export async function entrar(usuario: string, senha: string, igrejaId?: string): Promise<ResultadoEntrada> {
-  const res = await fetch(`${API_BASE}/entrar`, {
+async function postar<T>(caminho: string, corpo: unknown, padrao: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${caminho}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ usuario, senha, igreja_id: igrejaId }),
+    body: JSON.stringify(corpo),
   });
-  if (!res.ok) throw new Error(await detalhe(res, "Não foi possível entrar agora."));
+  if (!res.ok) throw new Error(await detalhe(res, padrao));
   return res.json();
+}
+
+/** 1º passo: usuário = nome, celular ou CPF. O código vai para o celular do cadastro da igreja. */
+export function pedirCodigo(usuario: string, igrejaId?: string): Promise<PedidoDeCodigo> {
+  return postar("/entrar/codigo", { usuario, igreja_id: igrejaId }, "Não foi possível enviar o código agora.");
+}
+
+/** "Não recebi": manda um código novo, de preferência pelo outro canal (SMS ↔ WhatsApp). */
+export function reenviarCodigo(desafio: string): Promise<CodigoEnviado> {
+  return postar("/entrar/codigo/reenviar", { desafio }, "Não foi possível reenviar o código agora.");
+}
+
+/** 2º passo: o código recebido abre a conta. */
+export function entrar(desafio: string, codigo: string): Promise<{ token: string; conta: Conta }> {
+  return postar("/entrar", { desafio, codigo }, "Não foi possível entrar agora.");
 }
 
 export async function historico(token: string, antesDe?: number): Promise<MensagemServidor[]> {

@@ -1,67 +1,135 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
+import type { CodigoEnviado } from "@/lib/api";
 import type { IgrejaParaEscolher } from "@/types";
 
 const digitsOnly = (v: string) => v.replace(/\D/g, "");
 
-// 12345678901 → 123.456.789-01 (enquanto digita)
-function mascaraCpf(v: string): string {
-  const d = digitsOnly(v).slice(0, 11);
-  return d
-    .replace(/^(\d{3})(\d)/, "$1.$2")
-    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/\.(\d{3})(\d)/, ".$1-$2");
-}
-
 const campo =
   "w-full rounded-xl border border-basile-glass-border bg-basile-950/40 px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-basile-200/30 focus:border-basile-500 focus:ring-2 focus:ring-basile-500/30";
 const rotulo = "mb-1.5 block text-xs font-medium uppercase tracking-wide text-basile-200/60";
+const botaoPrincipal =
+  "group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-basile-600 to-basile-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-basile-700/40 transition hover:from-basile-500 hover:to-basile-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60";
+const botaoDiscreto = "w-full text-center text-xs text-basile-200/50 hover:text-basile-200 disabled:opacity-40";
 
+const NOME_DO_CANAL = { sms: "SMS", whatsapp: "WhatsApp" } as const;
+
+function Girando({ texto }: { texto: string }) {
+  return (
+    <span className="flex items-center justify-center gap-2">
+      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4z" />
+      </svg>
+      {texto}
+    </span>
+  );
+}
+
+/**
+ * Entrar em dois passos: (1) nome, celular ou CPF → o código vai para o celular do cadastro da igreja
+ * (por SMS; se não der, pelo WhatsApp da igreja); (2) o código de 6 dígitos abre a conversa.
+ */
 export default function LoginForm() {
   const router = useRouter();
-  const { conta, carregando, login } = useChat();
+  const { conta, carregando, pedirCodigo, reenviarCodigo, confirmarCodigo } = useChat();
   const [usuario, setUsuario] = useState("");
-  const [senha, setSenha] = useState("");
   const [igrejas, setIgrejas] = useState<IgrejaParaEscolher[] | null>(null);
+  const [enviado, setEnviado] = useState<CodigoEnviado | null>(null);
+  const [codigo, setCodigo] = useState("");
+  const [espera, setEspera] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [aviso, setAviso] = useState("");
   const [error, setError] = useState("");
+  const campoDoCodigo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!carregando && conta) router.replace("/chat");
   }, [carregando, conta, router]);
 
-  const tentar = async (igrejaId?: string) => {
+  // contagem para liberar o "não recebi"
+  useEffect(() => {
+    if (espera <= 0) return;
+    const t = setTimeout(() => setEspera((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [espera]);
+
+  const receber = (r: CodigoEnviado) => {
+    setEnviado(r);
+    setIgrejas(null);
+    setCodigo("");
+    setEspera(r.reenviar_em_segundos);
+    setTimeout(() => campoDoCodigo.current?.focus(), 50);
+  };
+
+  const pedir = async (igrejaId?: string) => {
     setError("");
+    setAviso("");
     setLoading(true);
     try {
-      const escolher = await login(digitsOnly(usuario), digitsOnly(senha), igrejaId);
-      if (escolher) {
-        setIgrejas(escolher);
-        return;
-      }
-      router.push("/chat");
+      const r = await pedirCodigo(usuario.trim(), igrejaId);
+      if ("escolher" in r) setIgrejas(r.escolher);
+      else receber(r);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível entrar agora.");
+      setError(e instanceof Error ? e.message : "Não foi possível enviar o código agora.");
       setIgrejas(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const reenviar = async () => {
+    if (!enviado) return;
+    setError("");
+    setLoading(true);
+    try {
+      const r = await reenviarCodigo(enviado.desafio);
+      receber(r);
+      setAviso(`Enviamos um código novo por ${NOME_DO_CANAL[r.enviado_por]}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível reenviar o código agora.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (digitsOnly(usuario).length !== 11) {
-      setError("O usuário é o seu CPF (11 números).");
+    if (!enviado) return;
+    if (digitsOnly(codigo).length !== 6) {
+      setError("O código tem 6 números.");
       return;
     }
-    if (!senha) {
-      setError("Digite a sua senha.");
+    setError("");
+    setLoading(true);
+    try {
+      await confirmarCodigo(enviado.desafio, digitsOnly(codigo));
+      router.push("/chat");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível entrar agora.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enviarUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (usuario.trim().length < 3) {
+      setError("Digite o seu nome completo, o seu celular ou o seu CPF.");
       return;
     }
-    await tentar();
+    await pedir();
+  };
+
+  const recomecar = () => {
+    setEnviado(null);
+    setIgrejas(null);
+    setCodigo("");
+    setError("");
+    setAviso("");
   };
 
   if (carregando) return null;
@@ -92,61 +160,71 @@ export default function LoginForm() {
               <button
                 key={ig.igreja_id}
                 disabled={loading}
-                onClick={() => tentar(ig.igreja_id)}
+                onClick={() => pedir(ig.igreja_id)}
                 className="w-full rounded-xl border border-basile-glass-border bg-basile-950/40 px-4 py-3 text-left text-sm text-basile-50 transition hover:border-basile-500 disabled:opacity-60"
               >
                 {ig.igreja_nome || "Igreja"}
               </button>
             ))}
-            <button onClick={() => setIgrejas(null)} className="w-full text-center text-xs text-basile-200/50 hover:text-basile-200">
+            {error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
+            <button onClick={recomecar} className={botaoDiscreto}>
               Voltar
             </button>
           </div>
+        ) : enviado ? (
+          <form onSubmit={entrar} className="space-y-4">
+            <p className="text-sm text-basile-100/80">
+              Enviamos um código por <b>{NOME_DO_CANAL[enviado.enviado_por]}</b> para o celular{" "}
+              <span className="whitespace-nowrap font-medium text-basile-50">{enviado.destino}</span>.
+            </p>
+            <div>
+              <label className={rotulo}>Código</label>
+              <input
+                ref={campoDoCodigo}
+                type="text"
+                value={codigo}
+                onChange={(e) => setCodigo(digitsOnly(e.target.value).slice(0, 6))}
+                placeholder="6 números"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                className={`${campo} text-center text-lg tracking-[0.5em]`}
+              />
+            </div>
+
+            {aviso && <p className="rounded-lg bg-basile-500/10 px-3 py-2 text-xs text-basile-200">{aviso}</p>}
+            {error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
+
+            <button type="submit" disabled={loading} className={botaoPrincipal}>
+              {loading ? <Girando texto="Entrando..." /> : "Entrar"}
+            </button>
+            <button type="button" onClick={reenviar} disabled={loading || espera > 0} className={botaoDiscreto}>
+              {espera > 0 ? `Não recebeu? Peça de novo em ${espera}s` : "Não recebi o código"}
+            </button>
+            <button type="button" onClick={recomecar} className={botaoDiscreto}>
+              Usar outro nome, celular ou CPF
+            </button>
+          </form>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={enviarUsuario} className="space-y-4">
             <div>
               <label className={rotulo}>Usuário</label>
               <input
                 type="text"
                 value={usuario}
-                onChange={(e) => setUsuario(mascaraCpf(e.target.value))}
-                placeholder="Seu CPF"
+                onChange={(e) => setUsuario(e.target.value)}
+                placeholder="Nome completo, celular ou CPF"
                 autoComplete="username"
-                inputMode="numeric"
                 className={campo}
               />
             </div>
-
-            <div>
-              <label className={rotulo}>Senha</label>
-              <input
-                type="password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                placeholder="Por enquanto, também o seu CPF"
-                autoComplete="current-password"
-                className={campo}
-              />
-            </div>
+            <p className="text-xs text-basile-200/50">
+              Vamos mandar um código para o celular que está no seu cadastro da igreja. Ele é a sua senha.
+            </p>
 
             {error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-basile-600 to-basile-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-basile-700/40 transition hover:from-basile-500 hover:to-basile-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4z" />
-                  </svg>
-                  Entrando...
-                </span>
-              ) : (
-                "Entrar"
-              )}
+            <button type="submit" disabled={loading} className={botaoPrincipal}>
+              {loading ? <Girando texto="Enviando o código..." /> : "Receber o código"}
             </button>
           </form>
         )}

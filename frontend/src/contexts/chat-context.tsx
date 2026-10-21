@@ -9,9 +9,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { NaoAutorizado, entrar, historico, wsUrl } from "@/lib/api";
+import { NaoAutorizado, entrar, historico, pedirCodigo, reenviarCodigo, wsUrl } from "@/lib/api";
+import type { CodigoEnviado, PedidoDeCodigo } from "@/lib/api";
 import { WsClient } from "@/lib/ws-client";
-import type { Conta, IgrejaParaEscolher, Message, MensagemServidor, Sender, WsIncoming } from "@/types";
+import type { Conta, Message, MensagemServidor, Sender, WsIncoming } from "@/types";
 
 interface ChatContextValue {
   conta: Conta | null;
@@ -19,8 +20,11 @@ interface ChatContextValue {
   messages: Message[];
   isConnected: boolean;
   isBasileTyping: boolean;
-  /** Devolve as igrejas para escolher quando a pessoa está em mais de uma. */
-  login: (usuario: string, senha: string, igrejaId?: string) => Promise<IgrejaParaEscolher[] | null>;
+  /** Pede o código (ou devolve as igrejas para escolher quando a pessoa está em mais de uma). */
+  pedirCodigo: (usuario: string, igrejaId?: string) => Promise<PedidoDeCodigo>;
+  reenviarCodigo: (desafio: string) => Promise<CodigoEnviado>;
+  /** Confere o código e abre a conversa. */
+  confirmarCodigo: (desafio: string, codigo: string) => Promise<void>;
   sendMessage: (content: string, optionId?: string | null) => void;
   logout: () => void;
 }
@@ -123,10 +127,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [handleWsMessage, logout]
   );
 
-  const login = useCallback(
-    async (usuario: string, senha: string, igrejaId?: string) => {
-      const r = await entrar(usuario, senha, igrejaId);
-      if ("escolher" in r) return r.escolher;
+  const confirmarCodigo = useCallback(
+    async (desafio: string, codigo: string) => {
+      const r = await entrar(desafio, codigo);
       const s = { token: r.token, conta: r.conta };
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -134,7 +137,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         /* navegador sem armazenamento: vale só nesta aba */
       }
       await abrir(s);
-      return null;
     },
     [abrir]
   );
@@ -193,11 +195,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       messages,
       isConnected,
       isBasileTyping,
-      login,
+      pedirCodigo,
+      reenviarCodigo,
+      confirmarCodigo,
       sendMessage,
       logout,
     }),
-    [sessao, carregando, messages, isConnected, isBasileTyping, login, sendMessage, logout]
+    [sessao, carregando, messages, isConnected, isBasileTyping, confirmarCodigo, sendMessage, logout]
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
