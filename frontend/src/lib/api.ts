@@ -59,6 +59,24 @@ export async function historico(token: string, antesDe?: number): Promise<Mensag
   return res.json();
 }
 
+/** Outras igrejas em que o mesmo celular está no cadastro (para o "Trocar de igreja"). */
+export async function outrasIgrejas(token: string): Promise<IgrejaParaEscolher[]> {
+  const res = await fetch(`${API_BASE}/igrejas`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+/** Troca de igreja sem pedir outro código (o celular já foi confirmado). */
+export async function trocarIgreja(token: string, igrejaId: string): Promise<{ token: string; conta: Conta }> {
+  const res = await fetch(`${API_BASE}/trocar-igreja`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ igreja_id: igrejaId }),
+  });
+  if (!res.ok) throw new Error(await detalhe(res, "Não foi possível trocar de igreja agora."));
+  return res.json();
+}
+
 export function wsUrl(): string {
   return `${WS_BASE}/ws`;
 }

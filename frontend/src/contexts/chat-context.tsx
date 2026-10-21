@@ -9,10 +9,19 @@ import {
   useRef,
   useState,
 } from "react";
-import { NaoAutorizado, entrar, historico, pedirCodigo, reenviarCodigo, wsUrl } from "@/lib/api";
+import {
+  NaoAutorizado,
+  entrar,
+  historico,
+  outrasIgrejas,
+  pedirCodigo,
+  reenviarCodigo,
+  trocarIgreja as pedirTroca,
+  wsUrl,
+} from "@/lib/api";
 import type { CodigoEnviado, PedidoDeCodigo } from "@/lib/api";
 import { WsClient } from "@/lib/ws-client";
-import type { Conta, Message, MensagemServidor, Sender, WsIncoming } from "@/types";
+import type { Conta, IgrejaParaEscolher, Message, MensagemServidor, Sender, WsIncoming } from "@/types";
 
 interface ChatContextValue {
   conta: Conta | null;
@@ -25,6 +34,9 @@ interface ChatContextValue {
   reenviarCodigo: (desafio: string) => Promise<CodigoEnviado>;
   /** Confere o código e abre a conversa. */
   confirmarCodigo: (desafio: string, codigo: string) => Promise<void>;
+  /** Outras igrejas da pessoa (vazio = o botão "Trocar de igreja" não aparece). */
+  outras: IgrejaParaEscolher[];
+  trocarIgreja: (igrejaId: string) => Promise<void>;
   sendMessage: (content: string, optionId?: string | null) => void;
   logout: () => void;
 }
@@ -73,6 +85,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isBasileTyping, setIsBasileTyping] = useState(false);
+  const [outras, setOutras] = useState<IgrejaParaEscolher[]>([]);
   const wsRef = useRef<WsClient | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -86,6 +99,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     wsRef.current = null;
     setSessao(null);
     setMessages([]);
+    setOutras([]);
     setIsConnected(false);
     pararDeDigitar();
     try {
@@ -109,6 +123,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     async (s: SessaoSalva) => {
       wsRef.current?.disconnect();
       setSessao(s);
+      outrasIgrejas(s.token).then(setOutras).catch(() => setOutras([]));
       try {
         const lista = await historico(s.token);
         setMessages(lista.map(paraTela));
@@ -127,18 +142,34 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [handleWsMessage, logout]
   );
 
-  const confirmarCodigo = useCallback(
-    async (desafio: string, codigo: string) => {
-      const r = await entrar(desafio, codigo);
-      const s = { token: r.token, conta: r.conta };
+  const guardarEAbrir = useCallback(
+    async (s: SessaoSalva) => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
       } catch {
         /* navegador sem armazenamento: vale só nesta aba */
       }
+      setMessages([]);
       await abrir(s);
     },
     [abrir]
+  );
+
+  const confirmarCodigo = useCallback(
+    async (desafio: string, codigo: string) => {
+      const r = await entrar(desafio, codigo);
+      await guardarEAbrir({ token: r.token, conta: r.conta });
+    },
+    [guardarEAbrir]
+  );
+
+  const trocarIgreja = useCallback(
+    async (igrejaId: string) => {
+      if (!sessao) return;
+      const r = await pedirTroca(sessao.token, igrejaId);
+      await guardarEAbrir({ token: r.token, conta: r.conta });
+    },
+    [sessao, guardarEAbrir]
   );
 
   const sendMessage = useCallback(
@@ -198,10 +229,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       pedirCodigo,
       reenviarCodigo,
       confirmarCodigo,
+      outras,
+      trocarIgreja,
       sendMessage,
       logout,
     }),
-    [sessao, carregando, messages, isConnected, isBasileTyping, confirmarCodigo, sendMessage, logout]
+    [sessao, carregando, messages, isConnected, isBasileTyping, confirmarCodigo, outras, trocarIgreja, sendMessage, logout]
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

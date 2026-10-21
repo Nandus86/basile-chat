@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import ChatBubble from "@/components/chat-bubble";
 import MessageInput from "@/components/message-input";
@@ -25,8 +25,22 @@ function TypingIndicator() {
 }
 
 export default function ChatWindow() {
-  const { conta, messages, isBasileTyping, isConnected, sendMessage, logout } = useChat();
+  const { conta, messages, isBasileTyping, isConnected, sendMessage, logout, outras, trocarIgreja } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [trocando, setTrocando] = useState(false);
+
+  const escolher = async (igrejaId: string) => {
+    setTrocando(true);
+    try {
+      await trocarIgreja(igrejaId);
+      setMenuAberto(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Não foi possível trocar de igreja agora.");
+    } finally {
+      setTrocando(false);
+    }
+  };
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -54,9 +68,39 @@ export default function ChatWindow() {
             {isConnected ? "Conectado" : "Reconectando..."} · {conta?.nome}
           </p>
         </div>
+        {outras.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setMenuAberto((v) => !v)}
+              aria-label="Trocar de igreja"
+              title="Trocar de igreja"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-basile-200/60 transition hover:bg-basile-500/10 hover:text-basile-200"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
+            </button>
+            {menuAberto && (
+              <div className="glass-surface absolute right-0 top-11 z-30 w-64 rounded-2xl p-2 shadow-xl shadow-basile-950/50">
+                <p className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-basile-200/50">Trocar de igreja</p>
+                {outras.map((ig) => (
+                  <button
+                    key={ig.igreja_id}
+                    disabled={trocando}
+                    onClick={() => escolher(ig.igreja_id)}
+                    className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-basile-50 transition hover:bg-basile-500/15 disabled:opacity-50"
+                  >
+                    {ig.igreja_nome || "Igreja"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
           onClick={logout}
           aria-label="Sair"
+          title="Sair"
           className="flex h-9 w-9 items-center justify-center rounded-xl text-basile-200/60 transition hover:bg-basile-500/10 hover:text-basile-200"
         >
           <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
