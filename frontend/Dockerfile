@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+# Node 24 (LTS); Node 20 não recebe mais correções de segurança
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -22,7 +23,7 @@ RUN case "$NEXT_PUBLIC_API_BASE" in http://?*|https://?*) ;; \
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 

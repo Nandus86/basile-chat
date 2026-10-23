@@ -1,0 +1,3 @@
+
+# banco local do backend (tem dados de usuários) — nunca versionar
+backend/data/
